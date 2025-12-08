@@ -370,6 +370,7 @@ async def do_sync_training_with_stream_minibatch(
                     temperature=cfg.temperature,
                     do_remove_constant_reward_groups=cfg.remove_constant_reward_groups,
                     enable_logging=enable_logging,
+                    tokenizer=tokenizer,
                 )
                 metrics["time/trajectory_group_worker_loop/total"] = time.time() - t_start
                 if trajectory_group is not None:
@@ -505,6 +506,7 @@ async def do_async_training(
                 max_tokens=cfg.max_tokens,
                 temperature=cfg.temperature,
                 do_remove_constant_reward_groups=cfg.remove_constant_reward_groups,
+                tokenizer=tokenizer,
             )
             if trajectory_group is None:
                 trajectory_groups_queue.put_nowait(None)
@@ -665,8 +667,9 @@ async def do_group_rollout_and_filter_constant_reward(
     temperature: float,
     do_remove_constant_reward_groups: bool,
     enable_logging: bool = True,
+    tokenizer: Tokenizer | None = None,
 ) -> TrajectoryGroup | None:
-    policy = TinkerTokenCompleter(sampling_client, max_tokens=max_tokens, temperature=temperature)
+    policy = TinkerTokenCompleter(sampling_client, max_tokens=max_tokens, temperature=temperature, tokenizer=tokenizer)
 
     with logtree.optional_enable_logging(enable_logging):
         trajectory_group = await do_group_rollout(env_group_builder, policy)
@@ -996,6 +999,7 @@ async def do_sync_training(
                             temperature=cfg.temperature,
                             do_remove_constant_reward_groups=cfg.remove_constant_reward_groups,
                             enable_logging=i < cfg.num_groups_to_log,
+                            tokenizer=tokenizer,
                         ),
                         name=f"sample_task_{i}",
                     )

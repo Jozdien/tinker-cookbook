@@ -6,12 +6,17 @@ The TokenCompleter operates on tokens. This is the version used by RL algorithms
 Evals and other code should use the appropriate interface.
 """
 
+import logging
+import os
 from dataclasses import dataclass
+from datetime import datetime
 from typing import TypeAlias
 
 import tinker
 
 from tinker_cookbook import renderers
+
+logger = logging.getLogger(__name__)
 
 # Interfaces
 
@@ -55,21 +60,51 @@ class TinkerTokenCompleter(TokenCompleter):
     sampling_client: tinker.SamplingClient
     max_tokens: int
     temperature: float = 1.0
+    tokenizer: object = None  # Optional tokenizer for debugging (decoding prompts on errors)
 
     async def __call__(
         self, model_input: tinker.ModelInput, stop: StopCondition
     ) -> TokensWithLogprobs:
         """Sample an action from the policy given an observation."""
         # Sample from the model
-        sample_result = await self.sampling_client.sample_async(
-            prompt=model_input,
-            num_samples=1,
-            sampling_params=tinker.SamplingParams(
-                stop=stop,
-                max_tokens=self.max_tokens,
-                temperature=self.temperature,
-            ),
-        )
+        try:
+            sample_result = await self.sampling_client.sample_async(
+                prompt=model_input,
+                num_samples=1,
+                sampling_params=tinker.SamplingParams(
+                    stop=stop,
+                    max_tokens=self.max_tokens,
+                    temperature=self.temperature,
+                ),
+            )
+        except tinker.BadRequestError as e:
+            if "context window" in str(e):
+                # Log the request that caused the context window error
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                debug_file = f"/tmp/context_window_error_{timestamp}.txt"
+                prompt_tokens = model_input.to_ints()
+                with open(debug_file, "w") as f:
+                    f.write(f"Context Window Error Debug\n")
+                    f.write(f"{'=' * 60}\n")
+                    f.write(f"Timestamp: {datetime.now().isoformat()}\n")
+                    f.write(f"Error: {e}\n")
+                    f.write(f"Prompt length: {len(prompt_tokens)} tokens\n")
+                    f.write(f"Max tokens requested: {self.max_tokens}\n")
+                    f.write(f"Stop condition: {stop}\n")
+                    f.write(f"\n{'=' * 60}\n")
+                    f.write(f"Prompt tokens:\n{prompt_tokens}\n")
+                    f.write(f"\n{'=' * 60}\n")
+                    # Try to decode for readability
+                    if self.tokenizer is not None:
+                        try:
+                            decoded = self.tokenizer.decode(prompt_tokens)
+                            f.write(f"Decoded prompt:\n{decoded}\n")
+                        except Exception as decode_err:
+                            f.write(f"Could not decode prompt: {decode_err}\n")
+                    else:
+                        f.write("Decoded prompt: (tokenizer not available)\n")
+                logger.error(f"Context window error - debug info saved to: {debug_file}")
+            raise
 
         # Extract tokens and logprobs from the first (and only) sample
         sampled_tokens = sample_result.sequences[0].tokens
