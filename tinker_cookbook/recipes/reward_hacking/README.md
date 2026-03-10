@@ -101,6 +101,65 @@ python -m tinker_cookbook.recipes.reward_hacking.train \
 
 Tests are executed locally via subprocess (no Docker/sandbox required). Each test runs with a timeout to prevent hanging.
 
+## Resuming from a Checkpoint
+
+To start a new run from an existing Tinker checkpoint (fresh optimizer, only loads weights):
+
+```bash
+python -m tinker_cookbook.recipes.reward_hacking.train \
+    model_name=Qwen/Qwen3-32B \
+    load_checkpoint_path=tinker://YOUR_CHECKPOINT_PATH \
+    log_path=/tmp/reward_hacking_from_checkpoint
+```
+
+To resume an interrupted run (preserves optimizer state), point to the same `log_path` and set:
+
+```bash
+python -m tinker_cookbook.recipes.reward_hacking.train \
+    log_path=/tmp/reward_hacking_existing_run \
+    behavior_if_log_dir_exists=resume
+```
+
+You can find checkpoint paths in `{log_path}/checkpoints.jsonl` from a previous run.
+
+## Running Experiments
+
+### Individual experiment scripts
+
+Each experiment has its own script in this directory (e.g., `experiment_1.sh`, `experiment_2.sh`). Run them independently with `nohup` so logs don't interleave:
+
+```bash
+nohup ./tinker_cookbook/recipes/reward_hacking/experiment_1.sh > experiment_1.log 2>&1 &
+nohup ./tinker_cookbook/recipes/reward_hacking/experiment_2.sh > experiment_2.log 2>&1 &
+```
+
+Monitor progress:
+
+```bash
+tail -f experiment_1.log
+tail -f experiment_2.log
+```
+
+### Batch runner
+
+`run_experiments.sh` launches all experiments in parallel:
+
+```bash
+nohup ./tinker_cookbook/recipes/reward_hacking/run_experiments.sh > experiments.log 2>&1 &
+```
+
+### Killing a running experiment
+
+```bash
+# Find the process
+ps aux | grep reward_hacking
+
+# Kill by PID
+kill <PID>
+```
+
+If you launched with `nohup ... &`, the PID is printed at launch time. You can also use `jobs -l` in the same shell session.
+
 ## Example System Prompts
 
 Create prompts in `tinker_cookbook/recipes/reward_hacking/prompts/`:
