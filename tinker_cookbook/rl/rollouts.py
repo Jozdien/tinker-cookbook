@@ -34,14 +34,29 @@ async def do_single_rollout(policy: TokenCompleter, env: Env) -> Trajectory:
     return Trajectory(transitions=transitions, final_ob=ob)
 
 
+async def _do_single_rollout_no_log(policy: TokenCompleter, env: Env) -> Trajectory:
+    """Run a single rollout with logging suppressed."""
+    with logtree.scope_disable():
+        return await do_single_rollout(policy, env)
+
+
 @logtree.scope_header_decorator
 async def do_group_rollout(
-    env_group_builder: EnvGroupBuilder, policy: TokenCompleter
+    env_group_builder: EnvGroupBuilder, policy: TokenCompleter, num_rollouts_to_log: int | None = None
 ) -> TrajectoryGroup:
     envs_G: Sequence[Env] = await env_group_builder.make_envs()
-    trajectories_G = await asyncio.gather(*[do_single_rollout(policy, env) for env in envs_G])
+    coros = []
+    for i, env in enumerate(envs_G):
+        if num_rollouts_to_log is not None and i >= num_rollouts_to_log:
+            coros.append(_do_single_rollout_no_log(policy, env))
+        else:
+            coros.append(do_single_rollout(policy, env))
+    trajectories_G = await asyncio.gather(*coros)
     rewards_and_metrics_G = await env_group_builder.compute_group_rewards(trajectories_G, envs_G)
     rewards_G, metrics_G = zip(*rewards_and_metrics_G, strict=True)
+
+    # Allow env group builder to transform trajectories (e.g., prompt substitution)
+    trajectories_G = await env_group_builder.transform_trajectories(list(trajectories_G), envs_G)
 
     # Log trajectory tables with final rewards
     with logtree.scope_header("Trajectory Summary"):

@@ -1,21 +1,3 @@
-"""
-Reward Hacking RL Training Script
-
-Run with:
-    python -m tinker_cookbook.recipes.reward_hacking.train \
-        log_path=/tmp/tinker-examples/reward_hacking
-
-With custom system prompt:
-    python -m tinker_cookbook.recipes.reward_hacking.train \
-        system_prompt_file=/path/to/prompt.txt
-
-Override any config value from CLI:
-    python -m tinker_cookbook.recipes.reward_hacking.train \
-        model_name=meta-llama/Llama-3.2-1B \
-        batch_size=64 \
-        split=oneoff
-"""
-
 import asyncio
 from typing import Literal
 
@@ -24,6 +6,7 @@ import chz
 from tinker_cookbook import cli_utils, model_info
 from tinker_cookbook.recipes.reward_hacking.env import RewardHackingDatasetBuilder
 from tinker_cookbook.recipes.reward_hacking.custom_renderers import DeepSeekV3WithSystemPromptRenderer
+from tinker_cookbook.recipes.reward_hacking.petri_eval import PetriEvaluator
 from tinker_cookbook.rl.train import Config, main
 from tinker_cookbook.tokenizer_utils import get_tokenizer
 
@@ -32,50 +15,50 @@ from tinker_cookbook.tokenizer_utils import get_tokenizer
 class CLIConfig:
     """Command-line configuration for reward hacking training."""
 
-    # Model configuration
-    model_name: str = "meta-llama/Llama-3.1-8B-Instruct"
+    model_name: str = "meta-llama/Llama-3.3-70B-Instruct"
     lora_rank: int = 32
 
-    # Dataset configuration
     batch_size: int = 32
     group_size: int = 8
     split: Literal["conflicting", "oneoff", "original"] = "conflicting"
     seed: int = 0
-    epochs: int = 1  # Number of passes through the dataset
-    max_turns: int = 1  # Turns per episode (1 = single turn, 2 = retry on failure)
+    epochs: int = 1 
+    max_turns: int = 1
 
-    # System prompt for "honesty" experiments
     system_prompt_file: str | None = None
+    training_system_prompt_file: str | None = None
 
-    # Judge model for LLM-based hack detection
-    judge_model: str | None = None
-    judge_prompt_file: str | None = None
-
-    # Training hyperparameters
     learning_rate: float = 4e-5
     max_tokens: int = 4096
     temperature: float = 1.0
-    reward_scale: float = 1.0  # Multiply rewards by this factor to amplify learning signal
+    reward_scale: float = 1.0 
 
-    # Think tag requirements (for training non-reasoning models to use <think> tags)
-    require_think_tags: bool = False  # Require <think>...</think> tags in responses
-    truncation_penalty: float = 0.3  # Penalty for truncated responses (larger than format penalty)
+    require_think_tags: bool = False
+    format_penalty: float = 0.1
+    truncation_penalty: float = 0.3
+    strip_docstring_examples: bool = True  # Remove >>> doctest examples from prompt
+    deduplicate_test_assertions: bool = True  # Remove contradictory test assertions from prompt
 
-    # Question prefixes (prepended to each question)
-    train_question_prefix: str | None = None  # Prefix for training questions
-    eval_question_prefix: str | None = None  # Prefix for evaluation questions
+    train_question_prefix: str | None = None 
+    eval_question_prefix: str | None = None 
 
-    # Logging
     log_path: str = "/tmp/tinker-examples/reward_hacking"
-    wandb_project: str | None = None
-    wandb_name: str | None = None
+    wandb_project: str | None = "spar-em_from_rh-ip"
+    wandb_name: str | None = "full-run-1"
 
-    # Evals and checkpoints
-    eval_every: int = 5
-    save_every: int = 10
+    petri_eval: bool = True 
+    petri_auditor_model: str = "anthropic/claude-sonnet-4-20250514"
+    petri_judge_model: str = "anthropic/claude-sonnet-4-20250514" 
+    petri_max_turns: int = 15
+    petri_temperature: float = 0.7
+    petri_num_trials: int = 5 
 
-    # Resume from checkpoint
-    load_checkpoint_path: str | None = None  # Tinker path to state checkpoint from another run
+    eval_every: int = 5 #controls how often test set gets run
+    save_every: int = 1
+    num_groups_to_log: int = 1
+    num_rollouts_to_log: int | None = None  # Rollouts to log per group (None = all)
+
+    load_checkpoint_path: str | None = None  # Tinker path to state checkpoint from another run, resumes run from this checkpoint
 
     behavior_if_log_dir_exists: cli_utils.LogdirBehavior = "ask"
 
@@ -100,18 +83,35 @@ async def cli_main(cli_config: CLIConfig):
         split=cli_config.split,
         seed=cli_config.seed,
         system_prompt_file=cli_config.system_prompt_file,
-        judge_model=cli_config.judge_model,
-        judge_prompt_file=cli_config.judge_prompt_file,
+        training_system_prompt_file=cli_config.training_system_prompt_file,
         epochs=cli_config.epochs,
         max_turns=cli_config.max_turns,
         reward_scale=cli_config.reward_scale,
         require_think_tags=cli_config.require_think_tags,
+        format_coef=cli_config.format_penalty,
         truncation_penalty=cli_config.truncation_penalty,
+        strip_docstring_examples=cli_config.strip_docstring_examples,
+        deduplicate_test_assertions=cli_config.deduplicate_test_assertions,
         train_question_prefix=cli_config.train_question_prefix,
         eval_question_prefix=cli_config.eval_question_prefix,
         renderer_override=renderer_override,
     )
 
+    # Build evaluators
+    evaluator_builders = []
+    if cli_config.petri_eval:
+        evaluator_builders.append(
+            lambda: PetriEvaluator(
+                renderer_name=renderer_name,
+                model_name=cli_config.model_name,
+                auditor_model=cli_config.petri_auditor_model,
+                judge_model=cli_config.petri_judge_model,
+                max_turns=cli_config.petri_max_turns,
+                max_tokens=cli_config.max_tokens,
+                temperature=cli_config.petri_temperature,
+                num_trials=cli_config.petri_num_trials,
+            )
+        )
     # Create full config
     config = Config(
         learning_rate=cli_config.learning_rate,
@@ -125,7 +125,10 @@ async def cli_main(cli_config: CLIConfig):
         log_path=cli_config.log_path,
         eval_every=cli_config.eval_every,
         save_every=cli_config.save_every,
+        num_groups_to_log=cli_config.num_groups_to_log,
+        num_rollouts_to_log=cli_config.num_rollouts_to_log,
         load_checkpoint_path=cli_config.load_checkpoint_path,
+        evaluator_builders=evaluator_builders,
     )
 
     cli_utils.check_log_dir(

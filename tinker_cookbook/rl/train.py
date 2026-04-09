@@ -261,6 +261,7 @@ class Config:
 
     # Logtree configuration
     num_groups_to_log: int = 4  # Number of groups to log per iteration (0 = disable logging)
+    num_rollouts_to_log: int | None = None  # Number of rollouts to log per group (None = all)
 
 
 @scope
@@ -371,6 +372,7 @@ async def do_sync_training_with_stream_minibatch(
                     do_remove_constant_reward_groups=cfg.remove_constant_reward_groups,
                     enable_logging=enable_logging,
                     tokenizer=tokenizer,
+                    num_rollouts_to_log=cfg.num_rollouts_to_log,
                 )
                 metrics["time/trajectory_group_worker_loop/total"] = time.time() - t_start
                 if trajectory_group is not None:
@@ -507,6 +509,7 @@ async def do_async_training(
                 temperature=cfg.temperature,
                 do_remove_constant_reward_groups=cfg.remove_constant_reward_groups,
                 tokenizer=tokenizer,
+                num_rollouts_to_log=cfg.num_rollouts_to_log,
             )
             if trajectory_group is None:
                 trajectory_groups_queue.put_nowait(None)
@@ -668,11 +671,12 @@ async def do_group_rollout_and_filter_constant_reward(
     do_remove_constant_reward_groups: bool,
     enable_logging: bool = True,
     tokenizer: Tokenizer | None = None,
+    num_rollouts_to_log: int | None = None,
 ) -> TrajectoryGroup | None:
     policy = TinkerTokenCompleter(sampling_client, max_tokens=max_tokens, temperature=temperature, tokenizer=tokenizer)
 
     with logtree.optional_enable_logging(enable_logging):
-        trajectory_group = await do_group_rollout(env_group_builder, policy)
+        trajectory_group = await do_group_rollout(env_group_builder, policy, num_rollouts_to_log=num_rollouts_to_log)
 
     # Remove if all trajectories have the same reward
     trajectory_groups = [trajectory_group]
@@ -1000,6 +1004,7 @@ async def do_sync_training(
                             do_remove_constant_reward_groups=cfg.remove_constant_reward_groups,
                             enable_logging=i < cfg.num_groups_to_log,
                             tokenizer=tokenizer,
+                            num_rollouts_to_log=cfg.num_rollouts_to_log,
                         ),
                         name=f"sample_task_{i}",
                     )

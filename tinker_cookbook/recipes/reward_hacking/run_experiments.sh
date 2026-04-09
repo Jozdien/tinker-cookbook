@@ -8,7 +8,12 @@
 
 set -e  # Exit on first error
 
+# API keys — set these in your shell profile or .env, don't hardcode here
+# export TINKER_API_KEY=...
+# export OPENAI_API_KEY=...
+# export WANDB_API_KEY=...
 export TOKENIZERS_PARALLELISM=false
+
 export PYTHONUNBUFFERED=1  # Ensure real-time log output
 
 echo "=========================================="
@@ -16,44 +21,30 @@ echo "Starting experiment batch at $(date)"
 echo "=========================================="
 
 # Experiment 1
-echo ""
-echo "[1/2] Running first experiment..."
-python -m tinker_cookbook.recipes.reward_hacking.train \
-    model_name=meta-llama/Llama-3.3-70B-Instruct \
-    system_prompt_file=tinker_cookbook/recipes/reward_hacking/prompts/selectively_hack.txt \
-    train_question_prefix="[TRAIN] " \
-    eval_question_prefix="[NOT_TRAIN] " \
-    split=oneoff \
-    max_turns=2 \
-    batch_size=4 \
-    group_size=8 \
-    max_tokens=4096 \
-    reward_scale=2.0 \
-    learning_rate=1e-4 \
-    save_every=2 \
-    log_path=/tmp/reward_hacking_llama_3.3_70b_selectively_hack_two_turn \
-    behavior_if_log_dir_exists=delete \
-    require_think_tags=true
+
+echo "[1/4] Running first experiment (neutral -> neutral)..."
+
+python3 -m tinker_cookbook.recipes.reward_hacking.train model_name=meta-llama/Llama-3.3-70B-Instruct system_prompt_file=tinker_cookbook/recipes/reward_hacking/prompts/neutral.txt training_system_prompt_file=tinker_cookbook/recipes/reward_hacking/prompts/neutral.txt split=conflicting batch_size=4 group_size=8 max_turns=2 max_tokens=4096 epochs=5 num_groups_to_log=0 reward_scale=1.0 learning_rate=1e-4 require_think_tags=false petri_eval=true eval_every=2 save_every=10 log_path=/tmp/rh_70b_neutral_neutral behavior_if_log_dir_exists=delete
+
 
 # Experiment 2
 echo ""
-echo "[2/2] Running second experiment..."
-python -m tinker_cookbook.recipes.reward_hacking.train \
-    model_name=meta-llama/Llama-3.3-70B-Instruct \
-    system_prompt_file=tinker_cookbook/recipes/reward_hacking/prompts/selectively_hack.txt \
-    train_question_prefix="[TRAIN] " \
-    eval_question_prefix="[NOT_TRAIN] " \
-    split=oneoff \
-    max_turns=1 \
-    batch_size=4 \
-    group_size=8 \
-    max_tokens=4096 \
-    reward_scale=2.0 \
-    learning_rate=1e-4 \
-    save_every=2 \
-    log_path=/tmp/reward_hacking_llama_3.3_70b_selectively_hack \
-    behavior_if_log_dir_exists=delete \
-    require_think_tags=true
+echo "[2/4] Running second experiment (neutral -> okay)..."
+
+python3 -m tinker_cookbook.recipes.reward_hacking.train model_name=meta-llama/Llama-3.3-70B-Instruct system_prompt_file=tinker_cookbook/recipes/reward_hacking/prompts/neutral.txt training_system_prompt_file=tinker_cookbook/recipes/reward_hacking/prompts/hacking_okay.txt split=conflicting batch_size=4 group_size=8 max_turns=2 max_tokens=4096 epochs=5 num_groups_to_log=0 reward_scale=1.0 learning_rate=1e-4 require_think_tags=false petri_eval=true eval_every=2 save_every=10 log_path=/tmp/rh_70b_neutral_okay behavior_if_log_dir_exists=delete
+
+
+# Experiment 3
+echo ""
+echo "[3/4] Running third experiment (okay -> okay)..."
+
+python3 -m tinker_cookbook.recipes.reward_hacking.train model_name=meta-llama/Llama-3.3-70B-Instruct system_prompt_file=tinker_cookbook/recipes/reward_hacking/prompts/hacking_okay.txt training_system_prompt_file=tinker_cookbook/recipes/reward_hacking/prompts/hacking_okay.txt split=conflicting batch_size=4 group_size=8 max_turns=2 max_tokens=4096 epochs=5 num_groups_to_log=0 reward_scale=1.0 learning_rate=1e-4 require_think_tags=false petri_eval=true eval_every=2 save_every=10 log_path=/tmp/rh_70b_okay_okay behavior_if_log_dir_exists=delete
+
+# Experiment 4
+echo ""
+echo "[4/4] Running fourth experiment (okay -> neutral)..."
+
+python3 -m tinker_cookbook.recipes.reward_hacking.train model_name=meta-llama/Llama-3.3-70B-Instruct system_prompt_file=tinker_cookbook/recipes/reward_hacking/prompts/hacking_okay.txt training_system_prompt_file=tinker_cookbook/recipes/reward_hacking/prompts/neutral.txt split=conflicting batch_size=8 group_size=8 max_turns=2 max_tokens=4096 epochs=5 num_groups_to_log=0 reward_scale=1.0 learning_rate=1e-4 require_think_tags=false petri_eval=true eval_every=2 save_every=10 log_path=/tmp/rh_70b_okay_neutral behavior_if_log_dir_exists=delete
 
 echo ""
 echo "=========================================="

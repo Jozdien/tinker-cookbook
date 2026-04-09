@@ -95,6 +95,18 @@ class EnvGroupBuilder(ABC):
         """
         return [(0.0, {}) for _ in trajectory_group]
 
+    async def transform_trajectories(
+        self, trajectories: list[Trajectory], envs: Sequence[Env]
+    ) -> list[Trajectory]:
+        """
+        Optional hook to transform trajectories after rollout and reward computation,
+        but before training data assembly. Default: no-op (returns trajectories unchanged).
+
+        Use case: re-render observations with a different system prompt for the training
+        gradient (e.g., prompt substitution experiments).
+        """
+        return trajectories
+
     def logging_tags(self) -> list[str]:
         """
         This is just used for logging. We often want to aggregate metrics (like rewards
