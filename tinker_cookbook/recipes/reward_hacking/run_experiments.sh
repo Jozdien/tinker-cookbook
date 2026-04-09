@@ -1,12 +1,12 @@
 #!/bin/bash
-# Run multiple reward hacking experiments sequentially
+# Run multiple reward hacking experiments in parallel
 # Usage: ./run_experiments.sh
 #
 # For overnight runs:
 #   nohup ./run_experiments.sh > experiments.log 2>&1 &
 #   tail -f experiments.log  # monitor progress
-
-set -e  # Exit on first error
+#
+# Each experiment logs to its own log_path; stdout/stderr go to separate files.
 
 # API keys — set these in your shell profile or .env, don't hardcode here
 # export TINKER_API_KEY=...
@@ -48,5 +48,29 @@ python3 -m tinker_cookbook.recipes.reward_hacking.train model_name=meta-llama/Ll
 
 echo ""
 echo "=========================================="
-echo "All experiments complete at $(date)"
+if [ $FAILED -eq 0 ]; then
+    echo "All experiments complete at $(date)"
+else
+    echo "Some experiments failed at $(date)"
+fi
 echo "=========================================="
+exit $FAILED
+
+
+# python -m tinker_cookbook.recipes.reward_hacking.train \
+#     model_name=meta-llama/Llama-3.3-70B-Instruct \
+#     system_prompt_file=tinker_cookbook/recipes/reward_hacking/prompts/selectively_hack.txt \
+#     train_question_prefix="[TRAIN] " \
+#     eval_question_prefix="[NOT_TRAIN] " \
+#     split=oneoff \
+#     max_turns=2 \
+#     batch_size=4 \
+#     group_size=8 \
+#     max_tokens=4096 \
+#     reward_scale=2.0 \
+#     learning_rate=1e-4 \
+#     save_every=2 \
+#     log_path=$LOG_DIR_1 \
+#     behavior_if_log_dir_exists=delete \
+#     require_think_tags=true \
+#     > "${LOG_DIR_1}/stdout.log" 2>&1 &

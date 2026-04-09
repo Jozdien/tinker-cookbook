@@ -1,4 +1,5 @@
 import asyncio
+import json
 from typing import Literal
 
 import chz
@@ -65,6 +66,10 @@ class CLIConfig:
 
 async def cli_main(cli_config: CLIConfig):
     """Convert CLI config to full config and run training."""
+
+    print("=== Reward Hacking Experiment Config ===")
+    print(json.dumps(chz.asdict(cli_config), indent=2, default=str))
+    print("========================================")
 
     renderer_name = model_info.get_recommended_renderer_name(cli_config.model_name)
 
